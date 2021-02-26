@@ -4,13 +4,14 @@ canvas = document.getElementById("omni_game")
 ctx = canvas.getContext("2d")
 
 // Resize the screen; game is kept on a Square by default; outside elements are faux drawn
-autoResizeScreen = () => {canvas.width = canvas.height = Math.min(window.innerWidth, window.innerHeight)}
+autoResizeScreen = () => {canvas.width = canvas.height = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.9)}
 autoResizeScreen()
 
 // Scalar Function
 scalarW = (fl) => {return canvas.width * fl}
 scalarH = (fl) => {return canvas.height * fl}
 ctx.scalarRect = (x,y,w,h) => {ctx.rect(scalarW(x),scalarH(y),scalarW(w),scalarH(h),)}
+ctx.scalarGrad = (x0,y0,x1,y1) => {return ctx.createLinearGradient(canvas.width * x1, canvas.height * y0, canvas.width * x1, canvas.height * y1)}
 ctx.scalarMove = (x,y) => {ctx.moveTo(scalarW(x), scalarH(y))}
 ctx.scalarLine = (x,y) => {ctx.lineTo(scalarW(x), scalarH(y))}
 clearScreen = () => {ctx.clearRect(0,0,canvas.width,canvas.height)}
@@ -63,6 +64,7 @@ const DEFAULT_CVARS = [
 		["binds", ["KeyA","KeyS","KeyD","KeyF","Space","KeyJ","KeyK","KeyL","Semicolon"]],
 		["tracker_colors", [[220,200,250],[240,170,0],[0,150,0],[0,120,180],[190,90,40]], "Array for Sequence of Colors to Load on Tracker"],
 		["tracker_pointers", [0,1,2,3,4,3,2,1,0], "Array Sequence of what colors to direct to"],
+		["beam_colors", 	[ [64,64,224], [192,32,32], [255,255,0], [255,0,255] ], "For each beam type from BAD to COOL, what color shall we use!"]
 	]
 ]
 
@@ -200,7 +202,11 @@ CURRENT_SONG = new CURRENT_SONG()
 
 // Use these for Color Rendering
 Array.prototype.toHexString = function() {
-	return "#"+this[0].toString(16).padStart(2,0)+this[1].toString(16).padStart(2,0)+this[2].toString(16).padStart(2,0)
+	let output = ""
+	for (var i = this.length - 1; i >= 0; i--) {
+		output += this[i].toString(16).padStart(2,0).split("").reverse().join("")
+	}
+	return "#"+output.split("").reverse().join("")
 }
 Array.prototype.brightMult = function(mult) {
 	let o = []
@@ -221,7 +227,9 @@ Number.prototype.getBit = function(bit) {
 
 // EVENT LISTENER STUFF
 canvas.addEventListener("keydown", function(e) {
+	e.preventDefault()
 	if (!e.repeat) {
+		
 		let ind = getCValue("binds").indexOf(e.code)
 		if (ind >= 0) {
 			BUTTONS_PRESSED |= (2**ind)
@@ -230,6 +238,7 @@ canvas.addEventListener("keydown", function(e) {
 	}
 })
 canvas.addEventListener("keyup", function(e) {
+	e.preventDefault()
 	let ind = getCValue("binds").indexOf(e.code)
 	if (ind >= 0) {
 		// TODO: I forgot what to do but I need to remove 2^Bit from the number IF the Bit is True
@@ -237,6 +246,7 @@ canvas.addEventListener("keyup", function(e) {
 		EVENT_QUEUE.push([e.timeStamp, BUTTONS_PRESSED])
 	}
 })
+
 window.onresize = function(e) {
 	autoResizeScreen()
 }
@@ -244,8 +254,80 @@ window.onresize = function(e) {
 
 drawColumn = (x) => {
 	ctx.beginPath()
-	ctx.fillStyle = getCValue("tracker_colors")[getCValue("tracker_pointers")[x]].brightMult(1 - (getCValue("tracker_dim") * !BUTTONS_PRESSED.getBit(x))).toHexString()
+	ctx.fillStyle = getCValue("tracker_colors")[getCValue("tracker_pointers")[x]].brightMult(1 - (getCValue("tracker_dim") * (1))).toHexString()
 	ctx.scalarRect(getCValue("tracker_xpos") + (getCValue("column_width") * x), getCValue("tracker_ypos"), getCValue("column_width"), getCValue("tracker_height"))
+	ctx.fill()
+}
+
+
+BEAMS = []
+for (var i = 0; i < 9; i++) {
+		BEAMS.push([0,3])
+}
+const HIT_TYPES = {
+	BAD: 0,
+	GOOD: 1,
+	GREAT: 2,
+	COOL: 3,
+}
+
+
+
+// Input the expected amount of Deviation per Second and we apply Delta to it
+toPercPerSecond = (amount) => {
+	return (amount / 1000) * DELTA_TIME
+}
+
+
+	
+drawBeam = (x) => {
+	if (BEAMS[x][0]) {
+		let beam_color = getCValue("beam_colors")[BEAMS[x][1]].toHexString()
+		
+		
+		
+		let xpos = getCValue("tracker_xpos") + (((getCValue("column_width") * x)) + getCValue("column_width")/2)
+		let lwidth = (getCValue("column_width") * BEAMS[x][0])/2
+		let lheight = getCValue("tracker_height")
+		let ypos = getCValue("tracker_ypos")
+		
+		let beam_grad = ctx.scalarGrad(xpos, 0, xpos, ypos + lheight)
+		
+		beam_grad.addColorStop(0, beam_color+"33")
+		beam_grad.addColorStop(1, beam_color)
+		
+		
+		ctx.fillStyle = beam_grad
+		
+	
+		ctx.beginPath()
+		ctx.scalarRect(xpos, ypos, lwidth, lheight)
+		ctx.scalarRect(xpos, ypos, -lwidth, lheight)
+
+		ctx.fill()
+	}
+		
+	if (!BUTTONS_PRESSED.getBit(x)) {
+		BEAMS[x][0] -= toPercPerSecond(12)
+		if (BEAMS[x][0] < 0) {
+			BEAMS[x][0] = 0
+		}
+	}
+	else {
+		BEAMS[x][0] += toPercPerSecond(80)
+		if (BEAMS[x][0] > 1) {
+			BEAMS[x][0] = 1
+		}
+	}
+}
+
+
+// Draw a dark overlay
+overlayFade = (perc) => {
+	// Fill in with Shade
+	ctx.fillStyle = "rgba(100,0,0,"+perc+")"
+	ctx.beginPath()
+	ctx.scalarRect(0,0, 1,1)
 	ctx.fill()
 }
 
@@ -253,6 +335,8 @@ drawColumn = (x) => {
 // MAIN LOOP
 function main() {
 	requestAnimationFrame(main)
+	
+
 	
 	
 	// Check Note Interactions
@@ -263,12 +347,28 @@ function main() {
 		EVENT_QUEUE = []
 	}
 
-	if ((performance.now() - PREV_FRAME_TIME) > getFPSInterval()) {
+	DELTA_TIME = performance.now() - PREV_FRAME_TIME
+	if (DELTA_TIME > getFPSInterval()) {
+		PREV_FRAME_TIME = performance.now()
 		clearScreen()
 		
 		for (var i = 0; i < 9; i++) {
 			drawColumn(i)
+			drawBeam(i)
 		}
+		
+		// DRAW FOCUS WARN
+		if (document.activeElement != canvas) {
+			
+			overlayFade(0.6)
+			
+			// And do ALERT Text
+			ctx.fillStyle = "white"
+			ctx.beginPath()
+			ctx.fillText("CLICK TO FOCUS!", 50, 50)
+			ctx.fill()
+		}
+
 	}
 }
 
