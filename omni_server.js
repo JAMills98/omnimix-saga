@@ -15,6 +15,8 @@ app.get("/",function(req,res) {
 
 http.listen(80)
 
+const GAME_VERSION = 1
+
 class ServerSocket extends WebSocket.Server {
 	constructor(game) {
 		super({port: 443,
@@ -28,9 +30,10 @@ class ServerSocket extends WebSocket.Server {
 	
 	initEvents() {
 		this.on("connection", ws => {
-			ws.send(new Uint8Array([0,1,2,3,4,5,255]))
+			// Swap Modus to Version Read, then send Version Number
+			ws.send(new Uint8Array([15,0,GAME_VERSION]))
 			ws.on("message", message => {
-				console.log("CLIENT SENT: " +message)
+				console.log("CLIENT SENT: " +new Uint8Array(message))
 			})
 		})
 		
